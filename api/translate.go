@@ -10,14 +10,14 @@ import (
 
 func Translate(w http.ResponseWriter, r *http.Request) {
 	var (
-		translate callback.XFYunTranslate
+		translate callback.TranslateText
 		text      string
 		err       error
 	)
 
 	_ = json.NewDecoder(r.Body).Decode(&translate)
 
-	if text, err = translate.Translate(); err != nil {
+	if text, err = callback.Translate(translate); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write(fmt.Append(nil, err))
 		return

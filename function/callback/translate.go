@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/gounits/CloudFunctions/tool"
 	"hash"
 	"io"
 	"net/http"
@@ -14,16 +15,35 @@ import (
 	"time"
 )
 
-type XFYunTranslate struct {
-	ID     string `json:"id"`     // 翻译的APPID
-	Secret string `json:"secret"` // 翻译的密钥
-	Key    string `json:"key"`    // 翻译的公钥
-	Text   string `json:"text"`   // 需要翻译的文本
-	From   string `json:"from"`   // 原始语言
-	To     string `json:"to"`     // 翻译成的语言
+type ITranslate interface {
+	Translate(text string) (result string, err error)
 }
 
-func (x XFYunTranslate) post(data []byte) (result []byte, err error) {
+type TranslateText struct {
+	Text string `json:"text"` // 需要翻译的文本
+	From string `json:"from"` // 原始语言
+	To   string `json:"to"`   // 翻译成的语言
+}
+
+func Translate(tt TranslateText) (result string, err error) {
+	translate := NewXFYunTranslate(tt)
+	result, err = translate.Translate(tt.Text)
+	return
+}
+
+type xFYunTranslate struct {
+	TranslateText
+	id     string // 翻译的APPID
+	secret string // 翻译的密钥
+	key    string // 翻译的公钥
+}
+
+func NewXFYunTranslate(translate TranslateText) ITranslate {
+	xfy := tool.Conf.Translates["xfy"]
+	return &xFYunTranslate{id: xfy.Appid, secret: xfy.Secret, key: xfy.ApiKey, TranslateText: translate}
+}
+
+func (x xFYunTranslate) post(data []byte) (result []byte, err error) {
 	var (
 		request  *http.Request
 		response *http.Response
@@ -34,7 +54,7 @@ func (x XFYunTranslate) post(data []byte) (result []byte, err error) {
 	client := &http.Client{}
 
 	param := map[string]any{
-		"common":   map[string]string{"app_id": x.ID},
+		"common":   map[string]string{"app_id": x.id},
 		"business": map[string]string{"from": x.From, "to": x.To},
 		"data":     map[string]string{"text": base64.StdEncoding.EncodeToString(data)},
 	}
@@ -43,6 +63,22 @@ func (x XFYunTranslate) post(data []byte) (result []byte, err error) {
 
 	if request, err = http.NewRequest("POST", link, bytes.NewReader(tt)); err != nil {
 		return
+	}
+
+	sign := func(hash hash.Hash, data string) string {
+		hash.Write([]byte(data))
+		encodeData := hash.Sum(nil)
+		return base64.StdEncoding.EncodeToString(encodeData)
+	}
+
+	signHmac := func(data string, secret string) string {
+		mac := hmac.New(sha256.New, []byte(secret))
+		return sign(mac, data)
+	}
+
+	signBody := func(data string) string {
+		sha := sha256.New()
+		return sign(sha, data)
 	}
 
 	//增加header选项
@@ -58,10 +94,10 @@ func (x XFYunTranslate) post(data []byte) (result []byte, err error) {
 
 		// 根据请求头部内容，生成签名
 		signature := fmt.Sprintf("host: %s\ndate: %s\nPOST /v2/its HTTP/1.1\ndigest: %s", host, date, digest)
-		signature = signHmac(signature, x.Secret)
+		signature = signHmac(signature, x.secret)
 
 		// 组装Authorization头部
-		authHeader := fmt.Sprintf(`api_key="%s", algorithm="hmac-sha256", headers="host date request-line digest", signature="%s"`, x.Key, signature)
+		authHeader := fmt.Sprintf(`api_key="%s", algorithm="hmac-sha256", headers="host date request-line digest", signature="%s"`, x.key, signature)
 		request.Header.Set("Authorization", authHeader)
 	}
 
@@ -76,7 +112,7 @@ func (x XFYunTranslate) post(data []byte) (result []byte, err error) {
 	return
 }
 
-func (x XFYunTranslate) Translate() (text string, err error) {
+func (x xFYunTranslate) Translate(text string) (result string, err error) {
 	type R struct {
 		Code int `json:"code"`
 		Data struct {
@@ -86,42 +122,26 @@ func (x XFYunTranslate) Translate() (text string, err error) {
 	}
 
 	var (
-		result   R
+		r        R
 		response []byte
 	)
 
-	data := []byte(x.Text)
+	data := []byte(text)
 
 	if response, err = x.post(data); err != nil {
 		return
 	}
 
-	if err = json.Unmarshal(response, &result); err != nil {
+	if err = json.Unmarshal(response, &r); err != nil {
 		return
 	}
 
-	if result.Message != "success" {
-		err = fmt.Errorf("翻译错误:%s", result.Message)
+	if r.Message != "success" {
+		err = fmt.Errorf("翻译错误:%s", r.Message)
 		return
 	}
 
-	dst := result.Data.Result["trans_result"].(map[string]any)["dst"]
-	text = dst.(string)
+	dst := r.Data.Result["trans_result"].(map[string]any)["dst"]
+	result = dst.(string)
 	return
-}
-
-func sign(hash hash.Hash, data string) string {
-	hash.Write([]byte(data))
-	encodeData := hash.Sum(nil)
-	return base64.StdEncoding.EncodeToString(encodeData)
-}
-
-func signHmac(data string, secret string) string {
-	mac := hmac.New(sha256.New, []byte(secret))
-	return sign(mac, data)
-}
-
-func signBody(data string) string {
-	sha := sha256.New()
-	return sign(sha, data)
 }
