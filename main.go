@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/gounits/CloudFunctions/tool/middleware"
 	"log"
 	"net/http"
 
@@ -8,6 +9,7 @@ import (
 )
 
 func main() {
-	http.HandleFunc("POST /api/translate", api.Translate)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	middlewares := middleware.LoggingMiddleware(http.DefaultServeMux.ServeHTTP)
+	http.HandleFunc("POST /api/translate/{name...}", api.Translate)
+	log.Fatal(http.ListenAndServe(":8080", middlewares))
 }

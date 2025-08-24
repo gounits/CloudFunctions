@@ -15,32 +15,35 @@ import (
 	"time"
 )
 
-type ITranslate interface {
+type ITranslator interface {
 	Translate(text string) (result string, err error)
 }
 
-type TranslateText struct {
+type TranslateParam struct {
 	Text string `json:"text"` // 需要翻译的文本
 	From string `json:"from"` // 原始语言
 	To   string `json:"to"`   // 翻译成的语言
 }
 
-func Translate(tt TranslateText) (result string, err error) {
-	translate := NewXFYunTranslate(tt)
-	result, err = translate.Translate(tt.Text)
+func Translate(text string, translators ...ITranslator) (result string, err error) {
+	for _, ts := range translators {
+		if result, err = ts.Translate(text); err == nil {
+			return
+		}
+	}
 	return
 }
 
 type xFYunTranslate struct {
-	TranslateText
+	TranslateParam
 	id     string // 翻译的APPID
 	secret string // 翻译的密钥
 	key    string // 翻译的公钥
 }
 
-func NewXFYunTranslate(translate TranslateText) ITranslate {
+func NewXFYunTranslate(param TranslateParam) ITranslator {
 	xfy := tool.Conf.Translates["xfy"]
-	return &xFYunTranslate{id: xfy.Appid, secret: xfy.Secret, key: xfy.ApiKey, TranslateText: translate}
+	return &xFYunTranslate{id: xfy.Appid, secret: xfy.Secret, key: xfy.ApiKey, TranslateParam: param}
 }
 
 func (x xFYunTranslate) post(data []byte) (result []byte, err error) {
