@@ -1,11 +1,11 @@
 package main
 
 import (
-	"github.com/gounits/CloudFunctions/tool/middleware"
 	"log"
 	"net/http"
 
 	"github.com/gounits/CloudFunctions/api"
+	"github.com/gounits/CloudFunctions/tool/middleware"
 )
 
 func main() {

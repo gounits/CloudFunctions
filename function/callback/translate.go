@@ -7,27 +7,34 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"github.com/gounits/CloudFunctions/tool"
 	"hash"
 	"io"
 	"net/http"
 	"strings"
 	"time"
-)
 
-type ITranslator interface {
-	Translate(text string) (result string, err error)
-}
+	"github.com/gounits/CloudFunctions/tool"
+)
 
 type TranslateParam struct {
 	Text string `json:"text"` // 需要翻译的文本
-	From string `json:"from"` // 原始语言
-	To   string `json:"to"`   // 翻译成的语言
+	From string `json:"from"` // 原始的语言
+	To   string `json:"to"`   // 翻译的语言
 }
 
-func Translate(text string, translators ...ITranslator) (result string, err error) {
+// ITranslator 翻译器接口，要实现翻译器的功能必须要实现翻译函数
+type ITranslator interface {
+	// Translate 输入原始文本，输出翻译后的文本
+	Translate(param TranslateParam) (result string, err error)
+
+	// Name 返回一个翻译器的名称，用于过滤设备
+	Name() string
+}
+
+// Translate 翻译函数，输入需要翻译的文字，在输入一推各种各样的翻译器
+func Translate(param TranslateParam, translators ...ITranslator) (result string, err error) {
 	for _, ts := range translators {
-		if result, err = ts.Translate(text); err == nil {
+		if result, err = ts.Translate(param); err == nil {
 			return
 		}
 	}
@@ -35,18 +42,17 @@ func Translate(text string, translators ...ITranslator) (result string, err erro
 }
 
 type xFYunTranslate struct {
-	TranslateParam
 	id     string // 翻译的APPID
 	secret string // 翻译的密钥
 	key    string // 翻译的公钥
 }
 
-func NewXFYunTranslate(param TranslateParam) ITranslator {
+func NewXFYunTranslate() ITranslator {
 	xfy := tool.Conf.Translates["xfy"]
-	return &xFYunTranslate{id: xfy.Appid, secret: xfy.Secret, key: xfy.ApiKey, TranslateParam: param}
+	return &xFYunTranslate{id: xfy.Appid, secret: xfy.Secret, key: xfy.ApiKey}
 }
 
-func (x xFYunTranslate) post(data []byte) (result []byte, err error) {
+func (x xFYunTranslate) post(ts TranslateParam) (result []byte, err error) {
 	var (
 		request  *http.Request
 		response *http.Response
@@ -58,8 +64,8 @@ func (x xFYunTranslate) post(data []byte) (result []byte, err error) {
 
 	param := map[string]any{
 		"common":   map[string]string{"app_id": x.id},
-		"business": map[string]string{"from": x.From, "to": x.To},
-		"data":     map[string]string{"text": base64.StdEncoding.EncodeToString(data)},
+		"business": map[string]string{"from": ts.From, "to": ts.To},
+		"data":     map[string]string{"text": base64.StdEncoding.EncodeToString([]byte(ts.Text))},
 	}
 
 	tt, _ := json.Marshal(param)
@@ -115,7 +121,7 @@ func (x xFYunTranslate) post(data []byte) (result []byte, err error) {
 	return
 }
 
-func (x xFYunTranslate) Translate(text string) (result string, err error) {
+func (x xFYunTranslate) Translate(param TranslateParam) (result string, err error) {
 	type R struct {
 		Code int `json:"code"`
 		Data struct {
@@ -129,9 +135,7 @@ func (x xFYunTranslate) Translate(text string) (result string, err error) {
 		response []byte
 	)
 
-	data := []byte(text)
-
-	if response, err = x.post(data); err != nil {
+	if response, err = x.post(param); err != nil {
 		return
 	}
 
@@ -147,4 +151,8 @@ func (x xFYunTranslate) Translate(text string) (result string, err error) {
 	dst := r.Data.Result["trans_result"].(map[string]any)["dst"]
 	result = dst.(string)
 	return
+}
+
+func (xFYunTranslate) Name() string {
+	return "xf"
 }

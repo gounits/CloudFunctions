@@ -24,9 +24,10 @@ func Success(message string) {
 }
 
 // Error 记录错误日志（红色）
-func Error(message string) {
+func Error(message string) []byte {
 	log.SetPrefix(colorRed + "[错误] " + colorReset)
 	log.Println(colorRed + message + colorReset)
+	return []byte(message)
 }
 
 // Warn 记录警告日志（黄色）

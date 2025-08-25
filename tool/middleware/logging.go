@@ -2,9 +2,10 @@ package middleware
 
 import (
 	"fmt"
-	"github.com/gounits/CloudFunctions/tool"
 	"net/http"
 	"time"
+
+	"github.com/gounits/CloudFunctions/tool"
 )
 
 // LoggingMiddleware 是一个HTTP中间件，用于记录请求日志
